@@ -14,27 +14,33 @@ import { computeSignal } from '../src/signals/run';
 import { derivativesFactor, fetchDerivatives } from '../src/signals/context';
 import { BinanceAdapter } from '../src/sources/binance';
 import { brapi } from '../src/sources/brapi';
-import { getJson } from '../src/http';
+import { getJson, setFetch } from '../src/http';
 import { yahoo } from '../src/sources/yahoo';
 import type { Asset, Candle } from '../src/types';
 import type { Factor } from '../src/signals/signal';
 
 const out = process.argv[2] ?? 'cloud-out';
+// Os servidores do GitHub ficam nos EUA, e a api.binance.com responde 451 para lá. O espelho oficial só de dados
+// públicos de mercado (data-api.binance.vision) tem os mesmos caminhos. Derivativos (fapi) seguem bloqueados: o fator fica de fora.
+setFetch((u, init) => fetch(u.replace('https://api.binance.com/', 'https://data-api.binance.vision/'), init));
 const binance = new BinanceAdapter();
 
 async function universe(): Promise<Record<RankClass, Asset[]>> {
-  const t24 = await getJson<{ symbol: string; quoteVolume: string }[]>('https://api.binance.com/api/v3/ticker/24hr');
+  const t24 = await getJson<{ symbol: string; quoteVolume: string }[]>('https://api.binance.com/api/v3/ticker/24hr').catch((e: Error) => {
+    console.log('Binance:', e.message);
+    return [];
+  });
   const crypto = t24
     .filter((t) => t.symbol.endsWith('USDT') && !STABLE_BASES.test(t.symbol.slice(0, -4)))
     .sort((a, b) => +b.quoteVolume - +a.quoteVolume)
     .slice(0, RANK_UNIVERSE.crypto)
     .map((t): Asset => ({ id: `crypto:${t.symbol}`, symbol: t.symbol, name: t.symbol.slice(0, -4), cls: 'crypto', base: t.symbol.slice(0, -4), quote: 'USDT', ref: t.symbol }));
-  const b3 = await brapi.all();
+  const b3 = await brapi.all().catch((e: Error) => (console.log('brapi:', e.message), { assets: [] as Asset[], quotes: [] as { assetId: string; volume?: number; price: number }[] }));
   const vol = new Map(b3.quotes.map((q) => [q.assetId, (q.volume ?? 0) * q.price]));
   const byVol = (l: Asset[], n: number) => l.sort((a, b) => (vol.get(b.id) ?? 0) - (vol.get(a.id) ?? 0)).slice(0, n);
   const br = byVol(b3.assets.filter((a) => a.cls === 'br' && a.kind === 'ação'), RANK_UNIVERSE.br);
   const fii = byVol(b3.assets.filter((a) => a.cls === 'fii' && a.kind === 'fii'), RANK_UNIVERSE.fii);
-  const us = (await fetchUsCompanies()).slice(0, RANK_UNIVERSE.us).map((c): Asset => ({ id: `us:${c.symbol}`, symbol: c.symbol, name: c.name, cls: 'us', kind: 'ação', quote: 'USD', ref: c.symbol, meta: { sector: c.sector } }));
+  const us = (await fetchUsCompanies().catch((e: Error) => (console.log('Nasdaq:', e.message), []))).slice(0, RANK_UNIVERSE.us).map((c): Asset => ({ id: `us:${c.symbol}`, symbol: c.symbol, name: c.name, cls: 'us', kind: 'ação', quote: 'USD', ref: c.symbol, meta: { sector: c.sector } }));
   return { crypto, br, fii, us };
 }
 
