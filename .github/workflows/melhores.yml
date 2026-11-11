@@ -1,0 +1,38 @@
+# Robô dos Sinais: a cada 30 min roda a varredura do Pulso (core/cloud/scan.ts) e publica
+# melhores.json no GitHub Pages. O app (PC e celular) lê o arquivo e mostra os Melhores mesmo com o PC desligado.
+# Requer: repositório público (GitHub Pages grátis) e Settings > Pages > Source = GitHub Actions.
+name: melhores
+
+on:
+  schedule:
+    - cron: '7,37 * * * *' # a cada 30 min; o GitHub pode atrasar de 5 a 15 min
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: melhores
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci -w core
+      - run: npx tsx cloud/scan.ts ../site
+        working-directory: core
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: site }
+      - id: deploy
+        uses: actions/deploy-pages@v4

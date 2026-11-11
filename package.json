@@ -1,0 +1,1 @@
+{ "name": "pulso-robo", "private": true, "workspaces": ["core"] }
