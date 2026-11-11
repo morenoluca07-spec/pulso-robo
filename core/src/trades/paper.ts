@@ -42,14 +42,32 @@ export function closePaper(state: PaperState, t: Trade, fill: Fill, note?: strin
 }
 
 /** Patrimônio simulado ao preço atual. */
-export function paperEquity(state: PaperState, open: Trade[], price: (t: Trade) => number | undefined, fx: (currency: string) => number): number {
+export interface PaperEquity {
+  /** Patrimônio em reais. Posição sem cotação entra pelo preço de entrada (sem lucro nem perda). */
+  value: number;
+  /** Quantas posições abertas ficaram sem cotação (valor delas é o de entrada, não o de agora). */
+  unpriced: number;
+  unpricedIds: string[];
+}
+
+/** Patrimônio da conta simulada, dizendo quantas posições não tinham cotação. A tela deve avisar quando `unpriced > 0`. */
+export function paperEquityDetail(state: PaperState, open: Trade[], price: (t: Trade) => number | undefined, fx: (currency: string) => number): PaperEquity {
   let v = state.cashBRL;
+  const unpricedIds: string[] = [];
   for (const t of open) {
-    const p = price(t) ?? t.entryPrice;
+    const q = price(t);
+    const ok = q !== undefined && Number.isFinite(q);
+    if (!ok) unpricedIds.push(t.id);
+    const p = ok ? q : t.entryPrice;
     const gross = pnl({ ...t, fees: 0 }, p)!.net;
     v += (t.entryPrice * t.qty + gross) * fx(t.currency);
   }
-  return v;
+  return { value: v, unpriced: unpricedIds.length, unpricedIds };
+}
+
+/** Só o valor. Prefira `paperEquityDetail` para saber se alguma posição ficou sem cotação. */
+export function paperEquity(state: PaperState, open: Trade[], price: (t: Trade) => number | undefined, fx: (currency: string) => number): number {
+  return paperEquityDetail(state, open, price, fx).value;
 }
 
 export const sideLabel = (s: Side) => (s === 'long' ? 'Compra' : 'Venda (vendido)');

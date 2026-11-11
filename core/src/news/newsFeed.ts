@@ -58,7 +58,9 @@ export class NewsFeed {
     const fresh: NewsItem[] = [];
     const now = Date.now();
     for (const r of raw) {
-      const time = Number.isFinite(r.time) ? Math.min(r.time, now) : now;
+      // Sem data: não carimba "agora" (seria idade falsa). O item fica de fora.
+      if (!Number.isFinite(r.time)) continue;
+      const time = Math.min(r.time, now);
       if (now - time > MAX_AGE_MS) continue;
       const key = dedupeKey(r.title);
       const cur = this.items.get(key);

@@ -44,7 +44,9 @@ export function parseFiiCsv(geral: string, complemento: string): Map<string, Fii
   const ch = c[0];
   const ci = (n: string) => ch.indexOf(n);
   // Por CNPJ primeiro. Mesmo mês em versões diferentes: vale a maior versão (reapresentação).
-  const rows = c.slice(1).sort((a, b) => a[ci('Data_Referencia')].localeCompare(b[ci('Data_Referencia')]) || Number(a[ci('Versao')]) - Number(b[ci('Versao')]));
+  // Linha curta ou sem data (arquivo cortado, linha quebrada) fica de fora em vez de derrubar a leitura.
+  const di = ci('Data_Referencia');
+  const rows = c.slice(1).filter((r) => /^\d{4}-\d{2}/.test(r[di] ?? '') && !!r[ci('CNPJ_Fundo_Classe')]).sort((a, b) => a[ci('Data_Referencia')].localeCompare(b[ci('Data_Referencia')]) || Number(a[ci('Versao')]) - Number(b[ci('Versao')]));
   const byCnpj = new Map<string, FiiFundamentals>();
   for (const r of rows) {
     const cnpj = r[ci('CNPJ_Fundo_Classe')];
@@ -98,6 +100,9 @@ export async function fetchFiiFundamentals(year = new Date().getFullYear()): Pro
 /** Ano atual + anterior juntos, para ter 12 meses de rendimentos (≈ 2,8 MB). */
 export async function fetchFiiFundamentals12m(now = new Date()): Promise<{ data: Map<string, FiiFundamentals>; updated?: string }> {
   const y = now.getFullYear();
-  const [prev, cur] = await Promise.all([fetchFiiFundamentals(y - 1).catch(() => null), fetchFiiFundamentals(y)]);
-  return { data: prev ? mergeFii(prev.data, cur.data) : cur.data, updated: cur.updated };
+  const [prev, cur] = await Promise.allSettled([fetchFiiFundamentals(y - 1), fetchFiiFundamentals(y)]);
+  if (cur.status === 'fulfilled') return { data: prev.status === 'fulfilled' ? mergeFii(prev.value.data, cur.value.data) : cur.value.data, updated: cur.value.updated };
+  // Em janeiro a CVM ainda não publicou o zip do ano: vale só o ano anterior (cada FII traz o próprio mês de referência).
+  if (prev.status === 'fulfilled') return prev.value;
+  throw cur.reason;
 }

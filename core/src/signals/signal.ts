@@ -73,7 +73,16 @@ const pct = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1
  * Leitura no índice `i` usando só dados até `i` (sem olhar o futuro).
  * Pesos fixos, definidos antes do backtest: tendência 0,35; momento 0,25; MACD 0,15; volatilidade 0,10; volume 0,15.
  */
-export function snapshotAt(s: Series, i: number, h: Horizon, extra: Factor[] = []): Snapshot | null {
+export interface SnapshotOptions {
+  /**
+   * O candle `i` é o pregão de hoje, ainda aberto: o volume está incompleto e puxaria o fator
+   * de volume para baixo. Com true, o fator de volume fica de fora nesta leitura.
+   * Só para a leitura atual; nunca no histórico do backtest (lá todo candle é fechado).
+   */
+  partialLast?: boolean;
+}
+
+export function snapshotAt(s: Series, i: number, h: Horizon, extra: Factor[] = [], opts: SnapshotOptions = {}): Snapshot | null {
   const d = s.ind[h];
   const c = s.close[i];
   if (![d.fast[i], d.slow[i], d.rsi[i], d.macd[i], d.atr[i], d.bb[i], d.adx.adx[i]].every(Number.isFinite)) return null;
@@ -101,7 +110,7 @@ export function snapshotAt(s: Series, i: number, h: Horizon, extra: Factor[] = [
   f.push({ key: 'volatilidade', value: 0.1 * vol, text: b > 1 ? 'Preço acima da banda de Bollinger superior' : b < 0 ? 'Preço abaixo da banda de Bollinger inferior' : `Preço ${b > 0.5 ? 'na metade de cima' : 'na metade de baixo'} das bandas de Bollinger` });
 
   // Volume: volume acima da média confirma a direção do dia.
-  if (Number.isFinite(d.volAvg[i]) && d.volAvg[i] > 0 && s.volume[i] > 0) {
+  if (!opts.partialLast && Number.isFinite(d.volAvg[i]) && d.volAvg[i] > 0 && s.volume[i] > 0) {
     const ratio = s.volume[i] / d.volAvg[i];
     const dir = Math.sign(c - s.close[i - 1]);
     const v = clamp((ratio - 1) * dir);

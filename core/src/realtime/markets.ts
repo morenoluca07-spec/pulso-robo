@@ -1,10 +1,14 @@
 import { bcb, SERIES, type SgsPoint } from '../sources/bcb';
 import { b3Open, brapi } from '../sources/brapi';
+
 import { geckoterminal, MEME_NETWORKS } from '../sources/geckoterminal';
 import { nasdaq } from '../sources/nasdaq';
 import { WORLD, worldId, yahoo } from '../sources/yahoo';
 import type { Asset, AssetClass, Quote, SourceHealth } from '../types';
 import type { QuoteStore } from './store';
+
+const B3_TICK_MS = 5 * 60_000;
+const B3_CLOSED_MS = 30 * 60_000;
 
 type Health = Pick<SourceHealth, 'source'> & Partial<SourceHealth>;
 
@@ -64,6 +68,7 @@ export class MarketsFeed {
   selic?: SgsPoint & { fetchedAt: number };
   private listeners = new Set<() => void>();
   private timers: ReturnType<typeof setInterval>[] = [];
+  private lastB3Load = 0;
   private healthState = new Map<string, SourceHealth>();
   readonly yahooOnDemand: OnDemand;
 
@@ -113,10 +118,21 @@ export class MarketsFeed {
     this.stop(); // evita ciclos duplicados ao voltar do segundo plano
     await Promise.allSettled([this.loadB3(), this.assets.get('us')?.length ? Promise.resolve() : this.loadUS(), this.loadWorld(), this.loadMeme(), this.loadSelic()]);
     // Ciclos respeitando os limites medidos na Fase 0.
-    this.timers.push(setInterval(() => void this.loadB3(), b3Open() ? 5 * 60_000 : 30 * 60_000)); // ~192 req/dia
+    // Tique de 5 min: no pregão busca sempre (~192 req/dia); fechado, no máximo a cada 30 min.
+    // O estado do pregão é conferido a cada tique (antes era decidido só ao abrir o app).
+    this.timers.push(setInterval(() => void this.b3Tick(), B3_TICK_MS));
     this.timers.push(setInterval(() => void this.loadWorld(), 60_000));
     this.timers.push(setInterval(() => void this.loadMeme(), 90_000)); // 4 req a cada 90 s, espaçadas
     this.timers.push(setInterval(() => void this.loadSelic(), 3600_000));
+  }
+
+  /** Decide se o tique da B3 deve buscar agora. Público para teste. */
+  shouldLoadB3(now = Date.now()): boolean {
+    return b3Open(now) || now - this.lastB3Load >= B3_CLOSED_MS - 1000;
+  }
+
+  private b3Tick(): void {
+    if (this.shouldLoadB3()) void this.loadB3();
   }
 
   stop(): void {
@@ -125,6 +141,7 @@ export class MarketsFeed {
   }
 
   async loadB3(): Promise<void> {
+    this.lastB3Load = Date.now();
     try {
       const { assets, quotes } = await brapi.all();
       this.setClass('br', assets.filter((a) => a.cls === 'br'));

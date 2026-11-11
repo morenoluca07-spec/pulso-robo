@@ -16,7 +16,7 @@ export const LIVE_MAX_MS = 2_000;
  * Calcula o selo de idade de uma cotação.
  * `marketOpen` = false quando o mercado do ativo está fechado (bolsa fora do pregão).
  */
-export function freshness(q: Pick<Quote, 'sourceTime' | 'delivery' | 'declaredDelayMin' | 'marketState'>, now: number, marketOpen = q.marketState !== 'closed'): Freshness {
+export function freshness(q: Pick<Quote, 'sourceTime' | 'delivery' | 'declaredDelayMin' | 'marketState' | 'timeIsFetch'>, now: number, marketOpen = q.marketState !== 'closed'): Freshness {
   const ageMs = Math.max(0, now - q.sourceTime);
   if (!marketOpen) return { kind: 'closed', label: 'MERCADO FECHADO', ageMs };
   if (q.delivery === 'close') return { kind: 'close', label: 'FECHAMENTO', ageMs };
@@ -29,7 +29,10 @@ export function freshness(q: Pick<Quote, 'sourceTime' | 'delivery' | 'declaredDe
   // Consulta com mais de 4 h: nenhuma fonte atrasa tanto, é o último fechamento daquele mercado.
   if (ageMs > 4 * 3600_000) return { kind: 'close', label: 'FECHAMENTO', ageMs };
   if (q.delivery === 'delayed' || min >= 1) {
-    const shown = Math.max(min, q.declaredDelayMin ?? 0);
+    // timeIsFetch: o horário é o da consulta, não do preço. O preço já tinha o atraso declarado
+    // quando foi consultado, então a idade real = idade da consulta + atraso declarado.
+    const declared = q.declaredDelayMin ?? 0;
+    const shown = q.timeIsFetch ? min + declared : Math.max(min, declared);
     return { kind: 'delayed', label: shown >= 1 ? `ATRASO ~${shown} min` : `ATRASO ${Math.round(ageMs / 1000)} s`, ageMs };
   }
   // Fluxo contínuo que ficou alguns segundos sem negócio: ainda é recente, mas não "ao vivo".

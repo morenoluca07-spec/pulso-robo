@@ -57,7 +57,8 @@ export function parseNumber(s: string | undefined): number | undefined {
   if (t.includes(',') && t.includes('.')) t = t.lastIndexOf(',') > t.lastIndexOf('.') ? t.replace(/\./g, '').replace(',', '.') : t.replace(/,/g, '');
   else if (t.includes(',')) t = t.replace(',', '.');
   // Só pontos em grupos de 3 dígitos (10.000, 1.234.567): separador de milhar brasileiro.
-  else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+  // Grupo inicial "0" não é milhar: "0.001" é decimal (0,001), não 1.
+  else if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
   const n = Number(t);
   return Number.isFinite(n) ? n : NaN;
 }

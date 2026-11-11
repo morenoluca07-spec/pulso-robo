@@ -1,3 +1,4 @@
+import { holidays } from '../br/calendar';
 import { getJson } from '../http';
 import type { Asset, Quote } from '../types';
 
@@ -72,13 +73,24 @@ export function parseList(j: ListResp, fetchedAt: number): { assets: Asset[]; qu
   return { assets, quotes };
 }
 
-/** Pregão regular da B3 (dias úteis, 10h–17h de Brasília). Feriados: a fonte mostra o último negócio. */
+/**
+ * Fechamentos só da B3 (além dos feriados nacionais): sem pregão em 24/12 e 31/12.
+ * Prática da B3 nos calendários recentes (2023–2025, ex.: b3.com.br "Como será o funcionamento
+ * da B3 no Natal e no Ano Novo"). Conferir o ofício circular de feriados de cada ano.
+ */
+const B3_EXTRA_CLOSED = ['12-24', '12-31'];
+
+/** Pregão regular da B3 (dias úteis, 10h–17h de Brasília), sem feriados nacionais nem 24/12 e 31/12. */
 export function b3Open(now = Date.now()): boolean {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'short', hour: 'numeric', minute: 'numeric', hour12: false }).formatToParts(now);
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short', hour: 'numeric', minute: 'numeric', hour12: false }).formatToParts(now);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
   const wd = get('weekday');
+  if (['Sat', 'Sun'].includes(wd)) return false;
+  const y = +get('year');
+  const md = `${get('month')}-${get('day')}`;
+  if (holidays(y).has(`${y}-${md}`) || B3_EXTRA_CLOSED.includes(md)) return false;
   const mins = (+get('hour') % 24) * 60 + +get('minute');
-  return !['Sat', 'Sun'].includes(wd) && mins >= 600 && mins < 1020;
+  return mins >= 600 && mins < 1020;
 }
 
 export const brapi = {

@@ -13,16 +13,23 @@ export type CriterionId = 'mom12_1' | 'mom6_1' | 'rev1w' | 'techLongo';
 const ret = (c: number[], a: number, b: number) => (a >= 0 && b < c.length && c[a] > 0 ? c[b] / c[a] - 1 : undefined);
 const pct = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1).replace('.', ',')}%`;
 
-export const CRITERIA: Record<CriterionId, { label: string; value: (closes: number[], techLongo?: number) => number | undefined; describe: (v: number) => string }> = {
+/**
+ * Os critérios contam barras diárias (252, 126, 21, 5), como foram validados. Em bolsa, 252 pregões ≈ 12 meses;
+ * cripto negocia todo dia, então 252 barras ≈ 8 meses e 21 ≈ 3 semanas. Por isso `label` e `describe`
+ * aceitam a classe: o texto diz o período real de cada uma. As contas não mudam.
+ */
+export const CRITERIA: Record<CriterionId, { label: string; labelFor?: (cls?: RankClass) => string; value: (closes: number[], techLongo?: number) => number | undefined; describe: (v: number, cls?: RankClass) => string }> = {
   mom12_1: {
     label: 'Momento de 12 meses (sem o último mês)',
+    labelFor: (cls) => (cls === 'crypto' ? 'Momento de ~8 meses (sem as últimas ~3 semanas)' : 'Momento de 12 meses (sem o último mês)'),
     value: (c) => ret(c, c.length - 1 - 252, c.length - 1 - 21),
-    describe: (v) => `${pct(v)} de 12 meses atrás até 1 mês atrás`,
+    describe: (v, cls) => (cls === 'crypto' ? `${pct(v)} de ~8 meses atrás até ~3 semanas atrás` : `${pct(v)} de 12 meses atrás até 1 mês atrás`),
   },
   mom6_1: {
     label: 'Momento de 6 meses (sem a última semana)',
+    labelFor: (cls) => (cls === 'crypto' ? 'Momento de ~4 meses (sem os últimos 5 dias)' : 'Momento de 6 meses (sem a última semana)'),
     value: (c) => ret(c, c.length - 1 - 126, c.length - 1 - 5),
-    describe: (v) => `${pct(v)} de 6 meses atrás até 1 semana atrás`,
+    describe: (v, cls) => (cls === 'crypto' ? `${pct(v)} de ~4 meses atrás até 5 dias atrás` : `${pct(v)} de 6 meses atrás até 1 semana atrás`),
   },
   rev1w: {
     label: 'Reversão de 1 semana (quem mais caiu)',
@@ -38,6 +45,9 @@ export const CRITERIA: Record<CriterionId, { label: string; value: (closes: numb
     describe: (v) => `pontuação técnica de longo prazo ${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2).replace('.', ',')}`,
   },
 };
+
+/** Nome do critério com o período real da classe (cripto: barras = dias corridos). */
+export const criterionLabel = (id: CriterionId, cls?: RankClass): string => CRITERIA[id].labelFor?.(cls) ?? CRITERIA[id].label;
 
 export interface PeriodResult {
   /** Retorno em excesso médio dos 20% primeiros sobre a média da classe, por período de h pregões. */
@@ -101,7 +111,7 @@ export interface Ranked {
 }
 
 /** Ordena a classe pelo critério da regra. Ativos sem histórico suficiente ficam de fora (e são contados à parte). */
-export function rankBy(items: RankInput[], criterion: CriterionId): { ranked: Ranked[]; excluded: string[] } {
+export function rankBy(items: RankInput[], criterion: CriterionId, cls?: RankClass): { ranked: Ranked[]; excluded: string[] } {
   const c = CRITERIA[criterion];
   const ok: { assetId: string; value: number }[] = [];
   const excluded: string[] = [];
@@ -111,5 +121,5 @@ export function rankBy(items: RankInput[], criterion: CriterionId): { ranked: Ra
     else ok.push({ assetId: it.assetId, value: v });
   }
   ok.sort((a, b) => b.value - a.value);
-  return { ranked: ok.map((x, i) => ({ ...x, position: i + 1, of: ok.length, text: c.describe(x.value) })), excluded };
+  return { ranked: ok.map((x, i) => ({ ...x, position: i + 1, of: ok.length, text: c.describe(x.value, cls) })), excluded };
 }

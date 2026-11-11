@@ -2,7 +2,7 @@ import type { Asset, Candle } from '../types';
 import { backtest, ROUND_TRIP_COST, type BacktestResult } from './backtest';
 import { applyRisk } from './context';
 import type { RiskFlag } from '../sources/geckoterminal';
-import { HORIZONS, prepare, snapshotAt, type Factor, type Horizon, type Snapshot } from './signal';
+import { HORIZONS, prepare, snapshotAt, type Factor, type Horizon, type Snapshot, type SnapshotOptions } from './signal';
 
 export interface HorizonSignal {
   horizon: Horizon;
@@ -24,14 +24,18 @@ export interface AssetSignal {
 }
 
 /** Leitura nos três horizontes + probabilidade histórica de cada uma. */
-export function computeSignal(asset: Asset, candles: Candle[], source: string, context: Factor[] = [], risk: RiskFlag[] = []): AssetSignal | null {
+/**
+ * `opts.partialLast`: o último candle é o pregão de hoje ainda aberto (volume incompleto).
+ * Vale só para a leitura atual; o backtest usa o histórico sem essa opção.
+ */
+export function computeSignal(asset: Asset, candles: Candle[], source: string, context: Factor[] = [], risk: RiskFlag[] = [], opts: SnapshotOptions = {}): AssetSignal | null {
   if (candles.length < 60) return null;
   const s = prepare(candles);
   const i = candles.length - 1;
   const cost = ROUND_TRIP_COST[asset.cls] ?? 0.001;
   const horizons: HorizonSignal[] = [];
   for (const h of Object.keys(HORIZONS) as Horizon[]) {
-    let snap = snapshotAt(s, i, h, context);
+    let snap = snapshotAt(s, i, h, context, { partialLast: opts.partialLast });
     if (!snap) continue;
     if (risk.length) snap = applyRisk(snap, risk);
     horizons.push({ horizon: h, snapshot: snap, backtest: backtest(candles, h, snap.reading, cost, s) });

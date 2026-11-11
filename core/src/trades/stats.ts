@@ -4,6 +4,8 @@ export interface Stats {
   n: number;
   wins: number;
   losses: number;
+  /** Operações com resultado exatamente zero (empate): nem ganho nem perda. */
+  breakeven: number;
   winRate: number;
   avgWin: number;
   avgLoss: number;
@@ -26,14 +28,15 @@ export function tradeStats(trades: Trade[], toBase: (t: Trade, v: number) => num
   const res = closed.map((t) => toBase(t, pnl(t)!.net));
   const rs = closed.map((t) => pnl(t)!.r).filter((r): r is number => r !== undefined);
   const w = res.filter((v) => v > 0);
-  const l = res.filter((v) => v <= 0);
+  const l = res.filter((v) => v < 0);
   let streak = 0;
   let maxStreak = 0;
   let eq = 0;
   let peak = 0;
   let dd = 0;
   for (const v of res) {
-    streak = v <= 0 ? streak + 1 : 0;
+    // Empate não aumenta nem zera a sequência de perdas.
+    streak = v < 0 ? streak + 1 : v > 0 ? 0 : streak;
     maxStreak = Math.max(maxStreak, streak);
     eq += v;
     peak = Math.max(peak, eq);
@@ -45,6 +48,7 @@ export function tradeStats(trades: Trade[], toBase: (t: Trade, v: number) => num
     n: res.length,
     wins: w.length,
     losses: l.length,
+    breakeven: res.length - w.length - l.length,
     winRate: res.length ? w.length / res.length : NaN,
     avgWin: w.length ? sumW / w.length : NaN,
     avgLoss: l.length ? -sumL / l.length : NaN,

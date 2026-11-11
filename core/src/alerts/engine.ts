@@ -40,8 +40,11 @@ export function checkPrices(rules: AlertRule[], quotes: (id: string) => Quote | 
     if (!q) continue;
     if (r.type === 'pct_move') {
       if (q.changePct === undefined) continue;
+      // Mercado fechado: a variação é a do último pregão, já avisada. Não toca de novo no sábado, domingo, feriado.
+      if (q.marketState === 'closed') continue;
       const hit = r.direction === 'up' ? q.changePct >= r.pct : r.direction === 'down' ? q.changePct <= -r.pct : Math.abs(q.changePct) >= r.pct;
-      const today = day(now);
+      // Dia do pregão da própria cotação (não o relógio local): a mesma sessão não toca duas vezes.
+      const today = day(q.sourceTime);
       if (hit && state.pctDay[r.id] !== today) {
         state.pctDay[r.id] = today;
         fired.push({ ruleId: r.id, at: now, assetId: r.assetId, title: `${label(r.assetId)} ${q.changePct > 0 ? 'subiu' : 'caiu'} ${Math.abs(q.changePct).toFixed(2).replace('.', ',')}%`, body: `Regra: variação de ${r.pct}% no dia. Preço ${fmt(q.price)} (${q.source}).` });

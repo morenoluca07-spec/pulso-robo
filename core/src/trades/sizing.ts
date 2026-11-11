@@ -37,10 +37,11 @@ export function positionSize(i: SizeInput): SizeResult {
     limitedBy = 'teto';
   }
   if (i.lot > 0) {
-    const rounded = Math.floor(qty / i.lot) * i.lot;
+    // Folga contra erro de ponto flutuante: 300 / 100 pode dar 2,9999999 e perder um lote.
+    const rounded = Math.floor(qty / i.lot + 1e-9) * i.lot;
     if (rounded < qty && !limitedBy) limitedBy = 'lote';
     qty = rounded;
-  } else qty = Math.floor(qty * 1e8) / 1e8;
+  } else qty = Math.floor(qty * 1e8 + 1e-6) / 1e8;
   if (qty <= 0) return { qty: 0, notional: 0, lossAtStop: 0, limitedBy, error: i.lot > 1 ? `A perda aceita não cobre nem 1 lote de ${i.lot}. Use o mercado fracionário (lote 1) ou aumente a perda aceita.` : 'A perda aceita não cobre nem 1 unidade.' };
   return { qty, notional: qty * i.entry, lossAtStop: qty * perUnit, limitedBy };
 }
